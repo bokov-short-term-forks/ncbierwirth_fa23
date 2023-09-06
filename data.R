@@ -38,13 +38,30 @@ options(max.print=42);
 panderOptions('table.split.table',Inf); panderOptions('table.split.cells',Inf);
 
 #' # Import the data
-Input_Data <- 'https://physionet.org/static/published-projects/mimic-iv-demo/mimic-iv-clinical-database-demo-1.0.zip';
-dir.create('data',showWarnings = FALSE);
-Zipped_Data <- file.path("data",'tempdata.zip');
-download.file(Input_Data,destfile = Zipped_Data);
-Unzipped_Data <- unzip(Zipped_Data,exdir = 'data') %>% grep('gz$',.,val=T);
-Table_Names <- path_ext_remove(Unzipped_Data) %>% fs::path_ext_remove() %>% basename;
-for(ii in seq_along(Unzipped_Data)) assign(Table_Names[ii],import(Unzipped_Data[ii],format='csv'));
-#mapply(function(aa,bb) assign(aa,import(bb,format='csv'),inherits = T),Table_Names,Unzipped_Data)
-save(list=Table_Names,file='data.R.rdata');
-c()
+
+if(!file.exists('data.R.rdata')){
+  Input_Data <- 'https://physionet.org/static/published-projects/mimic-iv-demo/mimic-iv-clinical-database-demo-1.0.zip';
+  dir.create('data',showWarnings = FALSE);
+  Zipped_Data <- file.path("data",'tempdata.zip');
+  download.file(Input_Data,destfile = Zipped_Data);
+  Unzipped_Data <- unzip(Zipped_Data,exdir = 'data') %>% grep('gz$',.,val=T);
+  Table_Names <- path_ext_remove(Unzipped_Data) %>% fs::path_ext_remove() %>% basename;
+  for(ii in seq_along(Unzipped_Data)) assign(Table_Names[ii],import(Unzipped_Data[ii],format='csv'));
+  #mapply(function(aa,bb) assign(aa,import(bb,format='csv'),inherits = T),Table_Names,Unzipped_Data)
+  save(list=Table_Names,file='data.R.rdata');
+  message('data downloaded')
+} else{
+    message('data already present')
+  }
+
+
+load('data.R.rdata')
+
+#subject IDs are unique within patients table
+unique(patients$subject_id) %>% length()
+
+nrow(patients)
+
+is.na(patients$dod) %>% sum()
+
+is.na(patients$dod) %>% mean()
