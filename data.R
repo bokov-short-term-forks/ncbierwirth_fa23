@@ -1,5 +1,5 @@
 #'---
-#' title: "Data Extraction"
+#' title:"Data Extraction"
 #' author: 'Author One ^1^, Author Two ^1^'
 #' abstract: |
 #'  | Import data from an online source for use by the remaining scripts in this
@@ -33,6 +33,8 @@ library(printr); # automatically invoke pander when tables are detected
 library(broom); # standardized, enhanced views of various objects
 library(dplyr); # table manipulation
 library(fs);    # file system operations
+library(purrr)
+library(tidyr)
 
 democolumns <- c('subject_id','insurance','marital_status','ethnicity')
 
@@ -114,4 +116,31 @@ demographics<-group_by(admissions,subject_id) %>%
   mutate(ethnicity=gsub("UNKNOWN;","",ethnicity)) %>%
   mutate(ethnicity=gsub("UNABLE TO OBTAIN","UNKNOWN",ethnicity)) %>%
   left_join(patients[,1:3])
+
+# Creating named event tables
+
+named_outputevents<-left_join(outputevents,d_items)
+
+named_labevents<-left_join(labevents,d_labitems)
+
+named_chartevents<-left_join(chartevents,d_items)
+
+named_inputevents<-left_join(inputevents,d_items)
+
+named_icd<-left_join(diagnoses_icd,d_icd_diagnoses)
+
+#Assess most frequent diagnoses
+
+named_icd$long_title %>% table() %>% sort(decreasing = TRUE) %>% View()
+
+#potential variables (Lab/glucose, lab/A1c, diagnosis/hypoglycemia, diagnosis/hyperglycemia death, ICU stay, length of ICU stay)
+
+admissions_scaffold<-transmute(admissions,hadm_id=hadm_id,subject_id=subject_id,
+          date=map2(admittime,dischtime,function(xx,yy)
+            {seq(trunc(xx,units="day"),yy,by="day")})) %>% unnest()
+
+#homework: create a table with the above scaffold with an ICU stay_id. Use the icustays dataset
+#Import into the scaffold if the patient was in the icu during that date (and include the specific stay id)
+
+
 
