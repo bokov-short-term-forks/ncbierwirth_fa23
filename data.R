@@ -1,5 +1,5 @@
 #'---
-#' title:"Data Extraction"
+#' title: "Data Extraction"
 #' author: 'Author One ^1^, Author Two ^1^'
 #' abstract: |
 #'  | Import data from an online source for use by the remaining scripts in this
@@ -35,6 +35,7 @@ library(dplyr); # table manipulation
 library(fs);    # file system operations
 library(purrr)
 library(tidyr)
+library(stringr)
 
 democolumns <- c('subject_id','insurance','marital_status','ethnicity')
 
@@ -89,12 +90,12 @@ sapply(admissions[,democolumns],function(xx)unique(xx) %>% length())
 summarise(admissions[,democolumns]
           ,subject_id=length_unique(subject_id)
           ,insurance=length_unique(subject_id)
-          ,language=length_unique(language))
+          )
 
 summarise(admissions[,democolumns]
           ,across(any_of(democolumns), length_unique))
 
-group_by(admissions,subject_id) %>% summarise(across(any_of(democolumns), length_unique))
+group_by(admissions,subject_id) %>% summarise(across(any_of(democolumns), length_unique)) %>% head()
 #marital status, insurance, and ethnicity have duplicates
 
 unique(admissions$insurance)
@@ -131,16 +132,53 @@ named_icd<-left_join(diagnoses_icd,d_icd_diagnoses)
 
 #Assess most frequent diagnoses
 
-named_icd$long_title %>% table() %>% sort(decreasing = TRUE) %>% View()
+named_icd$long_title %>% table() %>% sort(decreasing = TRUE)
 
 #potential variables (Lab/glucose, lab/A1c, diagnosis/hypoglycemia, diagnosis/hyperglycemia death, ICU stay, length of ICU stay)
 
 admissions_scaffold<-transmute(admissions,hadm_id=hadm_id,subject_id=subject_id,
-          date=map2(admittime,dischtime,function(xx,yy)
-            {seq(trunc(xx,units="day"),yy,by="day")})) %>% unnest()
+                               los = ceiling(as.numeric(dischtime - admittime) / 24),
+                               date=map2(admittime,dischtime,
+                                         function(xx,yy) {seq(trunc(xx,units="day"),yy,by="day")})) %>%
+  unnest()
 
-#homework: create a table with the above scaffold with an ICU stay_id. Use the icustays dataset
-#Import into the scaffold if the patient was in the icu during that date (and include the specific stay id)
+#scaffold of ICU dates
+
+icu_scaffold = icustays %>% transmute( hadm_id, subject_id , stay_id ,
+                                       ICU_los = ceiling(as.numeric(outtime - intime) / 1440),
+                                       ICU_date = purrr::map2(intime,outtime, function(xx,yy)
+                                         seq(trunc(xx,units = 'days'),yy, by = 'day'))
+                                       ) %>% tidyr::unnest(ICU_date) %>%
+  group_by(hadm_id, subject_id, ICU_date) %>%
+  #summarise(ICU_los=paste(ICU_los, collapse = ";"), stay_id=paste(stay_id, collapse = ";"))
+  summarise(
+    ICU_los = list(ICU_los),  # Convert ICU_los to a list
+    stay_id = list(stay_id)   # Convert stay_id to a list
+  )
+
+
+hist(icustays$los, breaks = 100)
+
+sapply(.GlobalEnv,is.data.frame) %>% .[.] %>% names() %>%
+  sapply(., function(xx) get(xx) %>% colnames() %>% grepl('stay_id',.) %>% any()
+         %>% .[.] %>% names() %>% sapply(.,function(xx) get(xx) %>% colnames()))
+
+group_by(icu_scaffold,subject_id,ICU_date) %>%
+     summarise(number = n(),number_stays = length(unique(stay_id))) %>% subset(number>1) %>%
+     pull(subject_id) %>% {subset(icustays,subject_id %in% .)} %>% arrange(subject_id, intime)
+
+#each ICU stay is fully unique
+
+#combine ICU and admission days into main data set
+main_data <- left_join(admissions_scaffold, icu_scaffold,
+                           by=c("hadm_id"="hadm_id",
+                                "subject_id"="subject_id",
+                                "date"="ICU_date"))
+
+main_data <- c('E11649', "E162", "E161", "E160", "E13141", "E15") %>% paste(.,collapse = '|') %>%
+  {subset(named_icd, grepl(.,icd_code))}
+
+named_icd[grep('hypoglycemia', named_icd$long_title, ignore.case = TRUE),]
 
 
 
