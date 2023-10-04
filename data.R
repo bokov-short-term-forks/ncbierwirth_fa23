@@ -37,6 +37,9 @@ library(purrr)
 library(tidyr)
 library(stringr)
 
+#options
+options(datatable.na.strings=c('NA','NULL',''));
+
 democolumns <- c('subject_id','insurance','marital_status','ethnicity')
 
 length_unique<-function(xx){
@@ -47,7 +50,9 @@ length_unique<-function(xx){
 unique_vals<-function(xx){
   unique(xx) %>% sort() %>% paste(collapse =";")
 }
-#
+
+count_by_freq = . %>% summarise(n=n(),patients=length_unique(subject_id)) %>% arrange(desc(n))
+
 
 options(max.print=42);
 panderOptions('table.split.table',Inf); panderOptions('table.split.cells',Inf);
@@ -175,10 +180,72 @@ main_data <- left_join(admissions_scaffold, icu_scaffold,
                                 "subject_id"="subject_id",
                                 "date"="ICU_date"))
 
-main_data <- c('E11649', "E162", "E161", "E160", "E13141", "E15") %>% paste(.,collapse = '|') %>%
+hypoglycemia_data <- c('E11649', "E162", "E161", "E160", "E13141", "E15") %>% paste(.,collapse = '|') %>%
   {subset(named_icd, grepl(.,icd_code))}
 
 named_icd[grep('hypoglycemia', named_icd$long_title, ignore.case = TRUE),]
 
+#homework, left join our selected ICD-10 codes to be "yes or no hypoglycemia" to main_data
 
+hypoglycemia_demo<-left_join(main_data, hypoglycemia_data, by = "subject_id")
+hypoglycemia_demo$hypoglycemia<-ifelse(hypoglycemia_demo$long_title==NA,0,1)
 
+#Group ICD-10 codes by decending frequencies
+forcats::fct_count(named_icd$icd_code, sort = TRUE) %>% View()
+
+#Gives the highest frequncy of ICD-10 diagnosis
+dplyr::group_by(named_icd,icd_code,long_title) %>% summarize(n=n(), patients = length_unique(subject_id)) %>%
+  arrange(desc(n))
+
+#Looking at hypertension instead, this code gives all our "hypertension" ICD-10s
+subset(named_icd,str_detect(long_title,"hypertension")) %>% select(icd_code) %>% unique()
+
+#create hypertensin list
+htn_adm = named_icd %>%  subset(str_detect(tolower(long_title),'hypertension')) %>%
+  pull(hadm_id) %>% unique()
+
+#create row for patients with or without hypertension
+main_data <- left_join(admissions_scaffold, icu_scaffold,
+                       by=c("hadm_id"="hadm_id",
+                            "subject_id"="subject_id",
+                            "date"="ICU_date")) %>%
+  mutate(hypertension=hadm_id %in% htn_adm)
+
+group_by(named_labevents,category,fluid,loinc_code,label) %>%
+  summarize(n=n(),patients=length_unique(subject_id)) %>%
+  arrange(desc(n)) #%>% View()
+
+named_labevents %>% mutate(charttime=as.Date(charttime)) %>%
+  filter(itemid ==50820) %>% select(subject_id, hadm_id, charttime, valuenum) %>%
+  group_by(subject_id, charttime) %>% summarise(pH = min(valuenum)) %>% arrange(desc(pH))
+
+named_labevents %>% mutate( charttime = as.Date(charttime)) %>%
+  filter(itemid == 50820) %>%
+  group_by(subject_id, charttime) %>%
+  summarise(pH = min(valuenum)) %>%  arrange(desc(pH))
+
+pH_table = named_labevents %>% mutate( charttime = as.Date(charttime)) %>%
+  filter(itemid == 50820) %>%
+  group_by(subject_id, charttime) %>%
+  summarise(pH = min(valuenum), pH_flag = any(flag=='abnormal')) %>%
+  arrange(desc(pH))
+
+#named variables
+vital_abrev<-c(HR="Heart Rate",aSBP="Arterial Blood Pressure systolic",
+  mSBP="Manual Blood Pressure Systolic Left")
+
+analytic_events <- named_chartevents %>%  group_by(label, subject_id, date= as.Date(charttime)) %>%
+  # count_by_freq() %>%
+  filter(label %in% vital_abrev) %>%
+  summarize(median_value = median(valuenum, na.rm=TRUE)) %>%
+  pivot_wider(values_from = median_value, names_from = label) %>%
+  rename(any_of(vital_abrev))
+
+main_data <- main_data %>%
+  left_join(pH_table,by = c('subject_id', 'date' = 'charttime')) %>%
+  left_join(analytic_events) %>%
+  left_join(demographics)
+
+explore::explore_shiny(main_data)
+
+table(main_data$hypertension)
