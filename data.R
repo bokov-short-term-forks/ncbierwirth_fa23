@@ -23,6 +23,7 @@
 # This part does not show up in your rendered report, only in the script,
 # because we are using regular comments instead of #' comments
 debug <- 0;
+upload_to_google <- 0;
 knitr::opts_chunk$set(echo=debug>-1, warning=debug>0, message=debug>0);
 
 library(ggplot2); # visualisation
@@ -36,6 +37,7 @@ library(fs);    # file system operations
 library(purrr)
 library(tidyr)
 library(stringr)
+library(googleAuthR)
 
 #options
 options(datatable.na.strings=c('NA','NULL',''));
@@ -60,6 +62,8 @@ panderOptions('table.split.table',Inf); panderOptions('table.split.cells',Inf);
 #' # Import the data
 #' #If data.R.rdata does not exist, code will create "Input_data"
 
+starting_names <- ls()
+
 if(!file.exists('data.R.rdata')){
   Input_Data <- 'https://physionet.org/static/published-projects/mimic-iv-demo/mimic-iv-clinical-database-demo-1.0.zip'; #create value "Input_Data"
   dir.create('data',showWarnings = FALSE); #Creates a folder titled 'data'
@@ -76,6 +80,7 @@ if(!file.exists('data.R.rdata')){
 } else{
     message('data already present')
   load("data.R.rdata")
+  Table_Names<-setdiff(ls(), starting_names)
   }
 
 #subject IDs are unique within patients table
@@ -249,3 +254,17 @@ main_data <- main_data %>%
 explore::explore_shiny(main_data)
 
 table(main_data$hypertension)
+
+#SQL
+
+
+if(upload_to_google){googleAuthR::gar_cache_empty()
+gar_set_client("Service_Account_SQL.json")
+bqr_auth(email = 'ncbierwirth@gmail.com')
+bqr_upload_data('iron-atom-401719', 'ICU_Admissions_Data', 'Table_Names', Tables)}
+
+upload_table <- function(table_name) {
+  bqr_upload_data('iron-atom-401719', 'ICU_Admissions_Data', 'Table_Names', table_name)
+}
+
+lapply(Table_Names, upload_table)
