@@ -23,7 +23,7 @@
 # This part does not show up in your rendered report, only in the script,
 # because we are using regular comments instead of #' comments
 debug <- 0;
-upload_to_google <- 0;
+upload_to_google <- 1;
 knitr::opts_chunk$set(echo=debug>-1, warning=debug>0, message=debug>0);
 
 library(ggplot2); # visualisation
@@ -37,6 +37,7 @@ library(fs);    # file system operations
 library(purrr)
 library(tidyr)
 library(stringr)
+library(bigQueryR)
 library(googleAuthR)
 
 #options
@@ -73,14 +74,13 @@ if(!file.exists('data.R.rdata')){
   #unzips the zipped file, selects only for files containing gz which filters out directory data
   Table_Names <- path_ext_remove(Unzipped_Data) %>% path_ext_remove() %>% basename;
   #extracts name of each table
-  for(ii in seq_along(Unzipped_Data)) assign(Table_Names[ii],import(Unzipped_Data[ii],format='csv'));
+  for(ii in seq_along(Unzipped_Data)) assign(Table_Names[ii],import(Unzipped_Data[ii],format='csv', fread = FALSE));
   #mapply(function(aa,bb) assign(aa,import(bb,format='csv'),inherits = T),Table_Names,Unzipped_Data)
-  save(list=Table_Names,file='data.R.rdata');
+  save(list=c(Table_Names, "Table_Names"),file='data.R.rdata');
   message('data downloaded')
 } else{
     message('data already present')
   load("data.R.rdata")
-  Table_Names<-setdiff(ls(), starting_names)
   }
 
 #subject IDs are unique within patients table
@@ -251,20 +251,18 @@ main_data <- main_data %>%
   left_join(analytic_events) %>%
   left_join(demographics)
 
-explore::explore_shiny(main_data)
+#explore::explore_shiny(main_data)
 
 table(main_data$hypertension)
 
 #SQL
 
-
 if(upload_to_google){googleAuthR::gar_cache_empty()
 gar_set_client("Service_Account_SQL.json")
-bqr_auth(email = 'ncbierwirth@gmail.com')
-bqr_upload_data('iron-atom-401719', 'ICU_Admissions_Data', 'Table_Names', Tables)}
+bqr_auth(email = 'ncbierwirth@gmail.com')}
 
 upload_table <- function(table_name) {
-  bqr_upload_data('iron-atom-401719', 'ICU_Admissions_Data', 'Table_Names', table_name)
+  bqr_upload_data('iron-atom-401719', 'ICU_Admissions_Data', table_name, get(table_name))
 }
 
 lapply(Table_Names, upload_table)
