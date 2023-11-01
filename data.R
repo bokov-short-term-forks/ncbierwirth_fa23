@@ -42,6 +42,7 @@ library(googleAuthR)
 
 #options
 options(datatable.na.strings=c('NA','NULL',''));
+options(datatable.integer64="numeric")
 
 democolumns <- c('subject_id','insurance','marital_status','ethnicity')
 
@@ -69,12 +70,16 @@ if(!file.exists('data.R.rdata')){
   Input_Data <- 'https://physionet.org/static/published-projects/mimic-iv-demo/mimic-iv-clinical-database-demo-1.0.zip'; #create value "Input_Data"
   dir.create('data',showWarnings = FALSE); #Creates a folder titled 'data'
   Zipped_Data <- file.path("data",'tempdata.zip'); #creates Zipped_data which is essentially instructions on where to send the downloaded file
-  download.file(Input_Data,destfile = Zipped_Data); #dowloads "Input_Data" and sends file to the data folder, titles it tempdata.zip
+  if(!file.exists(Zipped_Data)){download.file(Input_Data,destfile = Zipped_Data)}; #dowloads "Input_Data" and sends file to the data folder, titles it tempdata.zip
   Unzipped_Data <- unzip(Zipped_Data,exdir = 'data') %>% grep('gz$',.,val=T);
   #unzips the zipped file, selects only for files containing gz which filters out directory data
   Table_Names <- path_ext_remove(Unzipped_Data) %>% path_ext_remove() %>% basename;
   #extracts name of each table
-  for(ii in seq_along(Unzipped_Data)) assign(Table_Names[ii],import(Unzipped_Data[ii],format='csv', fread = FALSE));
+  for(ii in seq_along(Unzipped_Data)){
+    assign(Table_Names[ii]
+           ,import(Unzipped_Data[ii],format='csv') %>%
+             mutate(across(where(~is(.x, "IDate")),as.Date)))
+    };
   #mapply(function(aa,bb) assign(aa,import(bb,format='csv'),inherits = T),Table_Names,Unzipped_Data)
   save(list=c(Table_Names, "Table_Names"),file='data.R.rdata');
   message('data downloaded')
@@ -257,12 +262,14 @@ table(main_data$hypertension)
 
 #SQL
 
-if(upload_to_google){googleAuthR::gar_cache_empty()
-gar_set_client("Service_Account_SQL.json")
-bqr_auth(email = 'ncbierwirth@gmail.com')}
+if(upload_to_google){
+  googleAuthR::gar_cache_empty()
+  gar_set_client("Service_Account_SQL.json")
+  bqr_auth(email = 'ncbierwirth@gmail.com')
 
-upload_table <- function(table_name) {
-  bqr_upload_data('iron-atom-401719', 'ICU_Admissions_Data', table_name, get(table_name))
+  upload_table <- function(table_name) {
+    bqr_upload_data('iron-atom-401719', 'ICU_Admissions_Data', table_name, get(table_name))
+  }
+
+  lapply(Table_Names, upload_table)
 }
-
-lapply(Table_Names, upload_table)
