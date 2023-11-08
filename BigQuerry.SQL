@@ -54,6 +54,28 @@ FROM labevents
 LEFT JOIN d_labitems on labevents.itemid = d_labitems.itemid;
 --Go through to recrecate the named files from our R code
 
+--SET @@dataset_id = 'ICU_Admissions_Data';
+DROP TABLE IF EXISTS named_icd;
+CREATE TABLE named_icd as
+SELECT diagnoses_icd.*, long_title
+FROM diagnoses_icd
+LEFT JOIN  d_icd_diagnoses ON diagnoses_icd.icd_code = d_icd_diagnoses.icd_code;
+
+--SET @@dataset_id = 'ICU_Admissions_Data';
+DROP TABLE IF EXISTS named_input;
+CREATE TABLE named_input AS
+SELECT inputevents.*, label
+FROM inputevents
+LEFT JOIN d_items ON inputevents.itemid = d_items.itemid;
+
+--SET @@dataset_id = 'ICU_Admissions_Data';
+DROP TABLE IF EXISTS named_output;
+CREATE TABLE named_output AS
+SELECT outputevents.*, label
+FROM outputevents
+LEFT JOIN d_items ON outputevents.itemid = d_items.itemid;
+
+
 /*WITH Recursive xx as(
   SELECT 1 MyNumber
   UNION ALL
@@ -87,4 +109,72 @@ SELECT *
 From scaffold
 ORDER BY hadm_id,hsp_date;
 
+/*
+icu_scaffold = icustays %>% transmute( hadm_id, subject_id , stay_id ,
+                                       ICU_los = ceiling(as.numeric(outtime - intime) / 1440),
+                                       ICU_date = purrr::map2(intime,outtime, function(xx,yy)
+                                         seq(trunc(xx,units = 'days'),yy, by = 'day'))
+                                       ) %>% tidyr::unnest(ICU_date) %>%
+  group_by(hadm_id, subject_id, ICU_date) %>%
+  #summarise(ICU_los=paste(ICU_los, collapse = ";"), stay_id=paste(stay_id, collapse = ";"))
+  summarise(
+    ICU_los = list(ICU_los),  # Convert ICU_los to a list
+    stay_id = list(stay_id)   # Convert stay_id to a list
+  )
+*/
+
 SET @@dataset_id = 'ICU_Admissions_Data';
+DROP TABLE IF EXISTS ICU_scaffold;
+CREATE TABLE ICU_scaffold as
+  WITH RECURSIVE scaffold as(
+      SELECT hadm_id,subject_id,stay_id,  ceiling(los) as ICU_revised_los, Date(intime) as ICU_date, intime, Date(outtime) as outtime,los as ICU_los
+      FROM icustays
+      UNION ALL
+      SELECT hadm_id,subject_id,stay_id, ICU_revised_los, date_add(ICU_date, INTERVAL 1 day) as ICU_date, intime, outtime, ICU_los
+      FROM scaffold
+      WHERE ICU_date < outtime
+    )
+    SELECT hadm_id,subject_id, stay_id, ICU_date, intime, ICU_revised_los as ICU_los
+    FROM scaffold
+    ORDER BY hadm_id, ICU_date;
+
+/* main_data <- left_join(admissions_scaffold, icu_scaffold,
+                           by=c("hadm_id"="hadm_id",
+                                "subject_id"="subject_id",
+                                "date"="ICU_date"))
+*/
+
+SET @@dataset_id = 'ICU_Admissions_Data';
+DROP TABLE IF EXISTS main_data;
+CREATE TABLE main_data as
+  WITH q0 AS(
+    SELECT adm_scaffold.*, stay_ID, ICU_LOS,
+      ROW_NUMBER() OVER (PARTITION BY adm_scaffold.hadm_id, hsp_date ORDER BY intime) AS rn
+    FROM adm_scaffold
+    LEFT JOIN ICU_scaffold ON adm_scaffold.hadm_id = ICU_scaffold.hadm_id AND adm_scaffold.hsp_date = ICU_scaffold.ICU_date
+    )
+SELECT *
+FROM q0 WHERE rn = 1
+ORDER BY hadm_id, hsp_date;
+
+
+
+    --END
+
+
+
+SET @@dataset_id = 'ICU_Admissions_Data';
+
+CREATE OR REPLACE PROCEDURE count_dups(
+  tablename STRING, columnname STRING, selectname STRING, dataset STRING
+)
+BEGIN
+  DECLARE mydataset STRING; DECLARE sqlquery STRING;
+  SET mydataset = (SELECT COALESCE(dataset, 'ICU_Admissions_Data'));
+  SET sqlquery = concat('SELECT ',columnname , 'FROM ', mydataset, '.', tablename);
+  SELECT sqlquery;
+  EXECUTE IMMEDIATE sqlquery
+;
+END;
+
+CALL ICU_Admissions_Data.count_dups('ICU_scaffold', 'hadm_id, stay_id ', NULL, NULL )
