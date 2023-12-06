@@ -55,3 +55,14 @@ os.listdir('data/mimic-iv-clinical-database-demo-1.0/')
 [xx for xx,yy,zz in os.walk('data')]
 file_list = [pd.read_csv(xx + "/" + filename) for xx, yy, zz in os.walk('data/mimic-iv-clinical-database-demo-1.0/') 
   for filename in zz if filename.endswith('.gz')]
+  
+#generic dataframe methods
+example_df=mimic['admissions']
+example_df.dtypes
+example_df.columns #returns list of columns
+example_df.shape #returns a tuple as number of rows and columns
+xx,yy = example_df.shape #xx is number of rows, yy is number of columns
+example_df.T
+example_df.T.dtypes #an example of command chaining
+example_df['insurance'].dropna().unique() #will give all unique values excluding missing values
+
