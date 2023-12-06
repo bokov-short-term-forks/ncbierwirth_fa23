@@ -25,8 +25,17 @@
 debug <- 0;
 upload_to_google <- 0;
 knitr::opts_chunk$set(echo=debug>-1, warning=debug>0, message=debug>0);
+refresh <- 0;
 
-library(ggplot2); # visualisation
+
+authemail <- 'ncbierwirth@gmail.com'
+projectid <- 'iron-atom-401719'
+datasetid <- 'ICU_Admissions_Data'
+
+# If you have a config_local.R, you can use it to override the default values above
+if(file.exists('config_local.R')) source('config_local.R');
+
+library(ggplot2); # visualization
 library(GGally);
 library(rio);# simple command for importing and exporting data
 library(pander); # format tables
@@ -34,35 +43,40 @@ library(printr); # automatically invoke pander when tables are detected
 library(broom); # standardized, enhanced views of various objects
 library(dplyr); # table manipulation
 library(fs);    # file system operations
-library(purrr)
-library(tidyr)
-library(stringr)
-library(bigQueryR)
-library(googleAuthR)
+library(purrr); # package contains map2
+library(tidyr); # package contains unnest
+library(stringr); #string operations
+library(googleAuthR); # interacting with Google BigQuery
+library(bigQueryR);
+library(DataExplorer);
+library(explore);
 
-#options
-options(datatable.na.strings=c('NA','NULL',''));
-options(datatable.integer64="numeric")
+options(max.print=42);
+options(datatable.na.strings=c('NA','NULL','')); #defines what is treated as missing/NA
+options(datatable.integer64='numeric');
+panderOptions('table.split.table',Inf); panderOptions('table.split.cells',Inf);
 
 democolumns <- c('subject_id','insurance','marital_status','ethnicity')
 
-length_unique<-function(xx){
+length_unique <- function(xx){
   unique(xx) %>% length()
 }
 #creating a function in order to identify and count unique variables within our dataframe
 
-unique_vals<-function(xx){
+unique_vals <- function(xx){
   unique(xx) %>% sort() %>% paste(collapse =";")
 }
 
-count_by_freq = . %>% summarise(n=n(),patients=length_unique(subject_id)) %>% arrange(desc(n))
+# you can save a pipe line as a function by starting it with '.'
+count_by_freq <- . %>% summarise(n=n(),patients=lengthunique(subject_id)) %>% arrange(desc(n));
 
 
 options(max.print=42);
 panderOptions('table.split.table',Inf); panderOptions('table.split.cells',Inf);
 
 #' # Import the data
-#' #If data.R.rdata does not exist, code will create "Input_data"
+#'
+#' If data.R.rdata does not exist, code will create "Input_data"
 
 starting_names <- ls()
 
@@ -88,12 +102,12 @@ if(!file.exists('data.R.rdata')){
   load("data.R.rdata")
   }
 
-#subject IDs are unique within patients table
+# subject IDs are unique within patients table
 unique(patients$subject_id) %>% length()
 
 nrow(patients) #100 total patients in dataset
 
-is.na(patients$dod) %>% sum() #ensured that patients are not deceased
+is.na(patients$dod) %>% sum() # number of deceased patients
 
 admissions[,democolumns] %>% unique() %>% nrow()
 #even after controlling for what should be unique variables, we have 116 unique lines in our dataset
@@ -110,7 +124,8 @@ summarise(admissions[,democolumns]
 summarise(admissions[,democolumns]
           ,across(any_of(democolumns), length_unique))
 
-group_by(admissions,subject_id) %>% summarise(across(any_of(democolumns), length_unique)) %>% head()
+group_by(admissions,subject_id) %>%
+  summarise(across(any_of(democolumns), length_unique)) %>% head();
 #marital status, insurance, and ethnicity have duplicates
 
 unique(admissions$insurance)
@@ -153,8 +168,8 @@ named_icd$long_title %>% table() %>% sort(decreasing = TRUE)
 
 admissions_scaffold<-transmute(admissions,hadm_id=hadm_id,subject_id=subject_id,
                                los = ceiling(as.numeric(dischtime - admittime) / 24),
-                               date=map2(admittime,dischtime,
-                                         function(xx,yy) {seq(trunc(xx,units="day"),yy,by="day")})) %>%
+                               date=map2(admittime,dischtime,function(xx,yy) {
+                                 seq(trunc(xx,units="day"),yy,by="day")})) %>%
   unnest()
 
 #scaffold of ICU dates
@@ -175,12 +190,14 @@ icu_scaffold = icustays %>% transmute( hadm_id, subject_id , stay_id ,
 hist(icustays$los, breaks = 100)
 
 sapply(.GlobalEnv,is.data.frame) %>% .[.] %>% names() %>%
-  sapply(., function(xx) get(xx) %>% colnames() %>% grepl('stay_id',.) %>% any()
-         %>% .[.] %>% names() %>% sapply(.,function(xx) get(xx) %>% colnames()))
+  sapply(., function(xx) get(xx) %>% colnames() %>% grepl('stay_id',.) %>%
+           any() %>% .[.] %>% names() %>%
+           sapply(.,function(xx) get(xx) %>% colnames()));
 
 group_by(icu_scaffold,subject_id,ICU_date) %>%
-     summarise(number = n(),number_stays = length(unique(stay_id))) %>% subset(number>1) %>%
-     pull(subject_id) %>% {subset(icustays,subject_id %in% .)} %>% arrange(subject_id, intime)
+  summarise(number = n(),number_stays = length(unique(stay_id))) %>%
+  subset(number>1) %>% pull(subject_id) %>%
+  {subset(icustays,subject_id %in% .)} %>% arrange(subject_id, intime);
 
 #each ICU stay is fully unique
 
@@ -197,22 +214,24 @@ named_icd[grep('hypoglycemia', named_icd$long_title, ignore.case = TRUE),]
 
 #homework, left join our selected ICD-10 codes to be "yes or no hypoglycemia" to main_data
 
-hypoglycemia_demo<-left_join(main_data, hypoglycemia_data, by = "subject_id")
-hypoglycemia_demo$hypoglycemia<-ifelse(hypoglycemia_demo$long_title==NA,0,1)
+hypoglycemia_demo<-left_join(main_data, hypoglycemia_data, by = "subject_id");
+hypoglycemia_demo$hypoglycemia<-ifelse(is.na(hypoglycemia_demo$long_title),0,1);
 
 #Group ICD-10 codes by decending frequencies
-forcats::fct_count(named_icd$icd_code, sort = TRUE) %>% View()
+forcats::fct_count(named_icd$icd_code, sort = TRUE) #%>% View()
 
 #Gives the highest frequncy of ICD-10 diagnosis
-dplyr::group_by(named_icd,icd_code,long_title) %>% summarize(n=n(), patients = length_unique(subject_id)) %>%
-  arrange(desc(n))
+dplyr::group_by(named_icd,icd_code,long_title) %>%
+  summarize(n=n(), patients = length_unique(subject_id)) %>% arrange(desc(n));
 
 #Looking at hypertension instead, this code gives all our "hypertension" ICD-10s
-subset(named_icd,str_detect(long_title,"hypertension")) %>% select(icd_code) %>% unique()
+subset(named_icd,str_detect(long_title,"hypertension")) %>% select(icd_code) %>%
+  unique();
 
 #create hypertensin list
-htn_adm = named_icd %>%  subset(str_detect(tolower(long_title),'hypertension')) %>%
-  pull(hadm_id) %>% unique()
+htn_adm = named_icd %>%
+  subset(str_detect(tolower(long_title),'hypertension')) %>% pull(hadm_id) %>%
+  unique();
 
 #create row for patients with or without hypertension
 main_data <- left_join(admissions_scaffold, icu_scaffold,
@@ -227,7 +246,8 @@ group_by(named_labevents,category,fluid,loinc_code,label) %>%
 
 named_labevents %>% mutate(charttime=as.Date(charttime)) %>%
   filter(itemid ==50820) %>% select(subject_id, hadm_id, charttime, valuenum) %>%
-  group_by(subject_id, charttime) %>% summarise(pH = min(valuenum)) %>% arrange(desc(pH))
+  group_by(subject_id, charttime) %>% summarise(pH = min(valuenum)) %>%
+  arrange(desc(pH));
 
 named_labevents %>% mutate( charttime = as.Date(charttime)) %>%
   filter(itemid == 50820) %>%
@@ -260,16 +280,20 @@ main_data <- main_data %>%
 
 table(main_data$hypertension)
 
-#SQL
+# Upload to BigQuery
 
 if(upload_to_google){
-  googleAuthR::gar_cache_empty()
-  gar_set_client("Service_Account_SQL.json")
-  bqr_auth(email = 'ncbierwirth@gmail.com')
+  googleAuthR::gar_cache_empty();
+  # If you ever need to download a new copy or make an OAuth
+  # credentials file for a different project, here are some instructions to
+  # help you: https://gargle.r-lib.org/articles/get-api-credentials.html
+  gar_set_client("Service_Account_SQL.json");
+  bqr_auth(email = authemail);
 
   upload_table <- function(table_name) {
-    bqr_upload_data('iron-atom-401719', 'ICU_Admissions_Data', table_name, get(table_name))
+    bqr_upload_data(projectid, datasetid, table_name, get(table_name));
   }
 
-  lapply(Table_Names, upload_table)
+  lapply(Table_Names,upload_table);
+  # can use lapply or for loop
 }

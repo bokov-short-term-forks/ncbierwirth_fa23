@@ -54,3 +54,4 @@ local.config.R
 data/
 *.json
 .DS_Store
+config_local.R
