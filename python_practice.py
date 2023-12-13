@@ -1,5 +1,12 @@
 # Setting variables
 
+#how to upload a python library 
+import pandas as pd
+import os
+
+
+"""use repl_python() in order to enter python environment"""
+
 foo = 1;
 bar = "hello";
 baz = 15
@@ -40,4 +47,22 @@ dictionary1.items()
 [vv for vv in disposiblelist]
 [vv for vv in disposiblelist if isinstance(vv, int)]
 #Commonly used data types: str, int, float
+
+#Pandas
+df00 = pd.read_csv('data/mimic-iv-clinical-database-demo-1.0/hosp/d_hcpcs.csv.gz')
+df00
+os.listdir('data/mimic-iv-clinical-database-demo-1.0/')
+[xx for xx,yy,zz in os.walk('data')]
+file_list = [pd.read_csv(xx + "/" + filename) for xx, yy, zz in os.walk('data/mimic-iv-clinical-database-demo-1.0/') 
+  for filename in zz if filename.endswith('.gz')]
+  
+#generic dataframe methods
+example_df=mimic['admissions']
+example_df.dtypes
+example_df.columns #returns list of columns
+example_df.shape #returns a tuple as number of rows and columns
+xx,yy = example_df.shape #xx is number of rows, yy is number of columns
+example_df.T
+example_df.T.dtypes #an example of command chaining
+example_df['insurance'].dropna().unique() #will give all unique values excluding missing values
 

@@ -48,10 +48,12 @@ local.config.R
 *_files
 # We don't commit data unless we really mean it.
 *.csv
+*.gz
 *.tsv
 *.rda
 *.xlsx
 data/
+data_py/
 *.json
 .DS_Store
 config_local.R
